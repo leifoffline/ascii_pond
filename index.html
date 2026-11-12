@@ -14,7 +14,7 @@
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:#1f3b5e;overflow:hidden}
+  html,body{margin:0;height:100%;background:#1f4a66;overflow:hidden}
   canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;cursor:crosshair;touch-action:none}
   canvas.is-grab{cursor:grabbing}
   .hud{position:fixed;font:11px/1 var(--mono);letter-spacing:0.04em;color:var(--text-mid);user-select:none}
@@ -90,15 +90,15 @@ const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.sli
 const mixc=(a,b,q)=>[a[0]+(b[0]-a[0])*q,a[1]+(b[1]-a[1])*q,a[2]+(b[2]-a[2])*q];
 const css=c=>'rgb('+Math.round(c[0])+','+Math.round(c[1])+','+Math.round(c[2])+')';
 const INK={water:0,cream:1,peach:2,mint:3,sage:4,apricot:5,white:6,lavender:7,bank:8,pink:9,bark:10,stone:11,firefly:12,aqua:13};
-const BASE=['#c9dff8','#ffeedd','#ff9f7d','#a6f0c4','#dcf2a6','#ffd28e','#fffaf3','#d4cff8','#b5d4c4','#ffc6dd','#e6cfc8','#a9c0e6','#fff2b8','#c2f3ff'].map(hex);
+const BASE=['#bfe3ea','#f6efe4','#ec966f','#a9d6ae','#b2cf9c','#f2aa5e','#fbf8f3','#cdd0ea','#a5c2a8','#f2c6d0','#c79e80','#9fc0cc','#fff2b8','#b8e6ee'].map(hex);
 function phase(bg,vig,water,stone,tint,amt,gain){
   return{bg:bg.map(hex),vig:hex(vig),gain,ink:BASE.map((c,i)=>i===0?hex(water):i===11?hex(stone):i===12?c:mixc(c,hex(tint),amt))};
 }
 const PHASES=[
-  phase(['#3a659c','#2a4f80','#1c3a62'],'#0b1c34','#c9dff8','#a9c0e6','#ffffff',0,1),
-  phase(['#8173b4','#5d5096','#383069'],'#191236','#ffd6e6','#c3b2e6','#ffc4d6',0.22,1.1),
-  phase(['#1d3364','#132248','#0b142e'],'#03071a','#a3bcf4','#7f98d2','#93aef0',0.36,1.4),
-  phase(['#93a5d6','#6a80c0','#465b98'],'#1b2752','#ffe3ea','#bccaf0','#ffe8d2',0.16,1.05)
+  phase(['#2e6a8c','#225475','#173d5e'],'#0a1f33','#bfe3ea','#9fc0cc','#ffffff',0,1),
+  phase(['#5f7198','#45597f','#2b3f5f'],'#141a33','#f4d6de','#b4b8d8','#ffc9d4',0.2,1.1),
+  phase(['#173d5c','#0f2e48','#081e32'],'#020b17','#9cc6dc','#7699b2','#93b8e0',0.34,1.4),
+  phase(['#7fa6c2','#5c86a8','#3d6487'],'#172c46','#f3e3e2','#b3cad8','#ffe6d0',0.14,1.05)
 ];
 const PNAME=['day','dusk','night','dawn'];
 const HOLD=60,BLEND=25;
@@ -143,6 +143,7 @@ let LS,stnx,stny,stx,sty,str,stb;
 let brSegs,blossoms,brBox,brRoot,brReach,brDir;
 let sgW,sgH,BSg,sGrid;
 let Px=0,Py=0,tiltX=0,tiltY=0;
+let GX,GY,NZ,camKey='',colS,colC,colW,rowS,rowC;
 const cam={z:1,tz:1,cx:0,cy:0,anchor:null,pz:0,pcx:0,pcy:0,moving:true};
 
 function init(){
@@ -153,7 +154,7 @@ function init(){
   /* S sizes things, PX/PY place them, so the pond keeps its proportions on any screen shape. */
   S=Math.sqrt(W*H/(680*422));PX=W/680;PY=H/422;
   sp=4.7*S;GW=Math.ceil(W/sp)+1;GH=Math.ceil(H/sp)+1;N=GW*GH;
-  A=new Float32Array(N);B=new Float32Array(N);V=new Float32Array(N);
+  A=new Float32Array(N);B=new Float32Array(N);V=new Float32Array(N);GX=new Float32Array(N);GY=new Float32Array(N);
 
   deep=mk(W*dpr,H*dpr);dctx=deep.getContext('2d');dctx.setTransform(dpr,0,0,dpr,0,0);
   under=mk(W*dpr,H*dpr);uctx=under.getContext('2d');uctx.setTransform(dpr,0,0,dpr,0,0);
@@ -172,26 +173,104 @@ function init(){
    to a coarser grid on a slow machine. */
 function setGrid(cell){
   CELL=cell;CW=Math.ceil(W/CELL);CH=Math.ceil(H/CELL);NC=CW*CH;
-  D=new Float32Array(NC);LAY=new Uint8Array(NC);CAT=new Uint8Array(NC);tex=new Float32Array(NC);
+  D=new Float32Array(NC);LAY=new Uint8Array(NC);CAT=new Uint8Array(NC);tex=new Float32Array(NC);NZ=new Float32Array(NC);camKey='';
+  colS=new Float64Array(CW);colC=new Float64Array(CW);colW=new Float64Array(CW);rowS=new Float64Array(CH);rowC=new Float64Array(CH);
   FS=CELL*1.42;SPR=Math.ceil(CELL*dpr)+2;SW=SPR/dpr;
   sprites=BASE.map(()=>{const set={};GLYPHS.forEach(ch=>{set[ch]=mk(SPR,SPR);});return set;});
-  baked=[-1,0,0,0];bake();
+  baked=[-1,0,0,0];bake();glGrid();
+}
+/* Draws one glyph centred in an SW-sized sprite whose top-left is the current origin. */
+function stampGlyph(g,m,ch){
+  g.font='500 '+FS+'px '+MONO;g.textBaseline='alphabetic';
+  const mt=m.measureText(ch);
+  g.fillText(ch,SW/2+((mt.actualBoundingBoxLeft||0)-(mt.actualBoundingBoxRight||mt.width))/2,SW/2+((mt.actualBoundingBoxAscent||FS*0.5)-(mt.actualBoundingBoxDescent||0))/2);
 }
 function bake(){
   baked=wv.slice();pal=blendPal();
   const m=mk(4,4).getContext('2d');m.font='500 '+FS+'px '+MONO;
-  sprites.forEach((set,i)=>{const col=css(pal.ink[i]);GLYPHS.forEach(ch=>{
+  /* With the GPU path only the fireflies and rain still use the 2D sprites. */
+  sprites.forEach((set,i)=>{if(gl&&i!==INK.firefly&&i!==INK.water)return;const col=css(pal.ink[i]);GLYPHS.forEach(ch=>{
     const c=set[ch],g=c.getContext('2d');g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,SPR,SPR);g.setTransform(dpr,0,0,dpr,0,0);
-    g.font='500 '+FS+'px '+MONO;g.textBaseline='alphabetic';g.fillStyle=col;
-    const mt=m.measureText(ch);
-    g.fillText(ch,SW/2+((mt.actualBoundingBoxLeft||0)-(mt.actualBoundingBoxRight||mt.width))/2,SW/2+((mt.actualBoundingBoxAscent||FS*0.5)-(mt.actualBoundingBoxDescent||0))/2);
+    g.fillStyle=col;stampGlyph(g,m,ch);
   });});
+  if(gl){const f=new Float32Array(BASE.length*3);pal.ink.forEach((c,i)=>{for(let k=0;k<3;k++)f[i*3+k]=Math.round(c[k])/255;});gl.uniform3fv(glU.uInk,f);}
   let r=bgc.createRadialGradient(W*0.5,H*0.42,0,W*0.5,H*0.5,Math.hypot(W,H)*0.6);
   r.addColorStop(0,css(pal.bg[0]));r.addColorStop(0.55,css(pal.bg[1]));r.addColorStop(1,css(pal.bg[2]));bgc.fillStyle=r;bgc.fillRect(0,0,W,H);
   const v=pal.vig.map(Math.round).join(',');
   vgc.clearRect(0,0,W,H);r=vgc.createRadialGradient(W/2,H/2,Math.min(W,H)*0.35,W/2,H/2,Math.hypot(W,H)*0.62);
   r.addColorStop(0,'rgba('+v+',0)');r.addColorStop(1,'rgba('+v+',0.55)');vgc.fillStyle=r;vgc.fillRect(0,0,W,H);
   todLabel();
+}
+
+/* ─── GPU glyph stamping ───
+   Tens of thousands of drawImage calls a frame swamp the main thread, so when
+   WebGL2 is available each layer's glyphs go out as one instanced draw from a
+   white glyph atlas, tinted by ink in the shader, and the result is copied
+   onto the same layer canvas the 2D path would have drawn into. */
+const GI={};GLYPHS.forEach((c,k)=>{GI[c]=k;});
+const FILL_I=FILL.map(c=>GI[c]),HOT_I=HOT.map(c=>GI[c]),EDGE_I=EDGE.map(c=>GI[c]),HASH_I=GI['#'];
+let gl=null,glc,glP,glInst,glTex,glData,glU;
+const GL_VS=`#version 300 es
+layout(location=0) in vec2 aC;
+layout(location=1) in uvec4 aD;
+uniform vec2 uView,uAtl;uniform float uCell,uSW,uTile,uSpr;uniform int uCW;uniform uint uLay;uniform vec3 uInk[${BASE.length}];
+out highp vec2 vUV;flat out vec4 vCol;
+void main(){
+  if(aD.w!=uLay||aD.z==0u){gl_Position=vec4(2.,2.,2.,1.);return;}
+  int col=gl_InstanceID%uCW,row=gl_InstanceID/uCW;
+  vec2 p=(vec2(col,row)+.5)*uCell-uSW*.5+aC*uSW;
+  gl_Position=vec4(p.x/uView.x*2.-1.,1.-p.y/uView.y*2.,0.,1.);
+  vUV=(vec2(float(aD.x)*uTile+1.,1.)+aC*uSpr)/uAtl;
+  float a=float(aD.z)/255.;
+  vCol=vec4(uInk[int(aD.y)]*a,a);
+}`;
+const GL_FS=`#version 300 es
+precision highp float;
+uniform sampler2D uT;in highp vec2 vUV;flat in vec4 vCol;out vec4 o;
+void main(){o=vCol*texture(uT,vUV).a;}`;
+function glSetup(){
+  try{
+    glc=document.createElement('canvas');
+    gl=glc.getContext('webgl2',{alpha:true,premultipliedAlpha:true,antialias:false,depth:false,stencil:false});
+    if(!gl)return;
+    const sh=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+    glP=gl.createProgram();gl.attachShader(glP,sh(gl.VERTEX_SHADER,GL_VS));gl.attachShader(glP,sh(gl.FRAGMENT_SHADER,GL_FS));gl.linkProgram(glP);
+    if(!gl.getProgramParameter(glP,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(glP));
+    gl.useProgram(glP);
+    glU={};['uView','uAtl','uCell','uSW','uTile','uSpr','uCW','uLay','uInk','uT'].forEach(n=>{glU[n]=gl.getUniformLocation(glP,n);});
+    gl.bindVertexArray(gl.createVertexArray());
+    gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([0,0,1,0,0,1,1,1]),gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+    glInst=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,glInst);
+    gl.enableVertexAttribArray(1);gl.vertexAttribIPointer(1,4,gl.UNSIGNED_BYTE,0,0);gl.vertexAttribDivisor(1,1);
+    glTex=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,glTex);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.uniform1i(glU.uT,0);
+    gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);gl.clearColor(0,0,0,0);
+    /* If the GPU context is lost, fall back to the 2D path and rebake its sprites. */
+    glc.addEventListener('webglcontextlost',e=>{e.preventDefault();gl=null;baked=[-1,0,0,0];});
+  }catch(e){gl=null;}
+}
+/* Atlas of white glyphs, one SPR tile each with a 1px clear gutter, rebuilt with the grid. */
+function glGrid(){
+  if(!gl)return;
+  glc.width=Math.round(W*dpr);glc.height=Math.round(H*dpr);gl.viewport(0,0,glc.width,glc.height);
+  const T=SPR+2,aw=T*GLYPHS.length,a=mk(aw,T),g=a.getContext('2d'),m=mk(4,4).getContext('2d');
+  m.font='500 '+FS+'px '+MONO;g.fillStyle='#fff';
+  GLYPHS.forEach((ch,k)=>{g.save();g.beginPath();g.rect(k*T+1,1,SPR,SPR);g.clip();g.setTransform(dpr,0,0,dpr,k*T+1,1);stampGlyph(g,m,ch);g.restore();});
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,a);
+  glData=new Uint8Array(NC*4);gl.bindBuffer(gl.ARRAY_BUFFER,glInst);gl.bufferData(gl.ARRAY_BUFFER,glData.byteLength,gl.DYNAMIC_DRAW);
+  gl.uniform2f(glU.uView,W,H);gl.uniform2f(glU.uAtl,aw,T);gl.uniform1f(glU.uCell,CELL);gl.uniform1f(glU.uSW,SW);
+  gl.uniform1f(glU.uTile,T);gl.uniform1f(glU.uSpr,SPR);gl.uniform1i(glU.uCW,CW);
+}
+function glDraw(layers){
+  gl.bindBuffer(gl.ARRAY_BUFFER,glInst);gl.bufferSubData(gl.ARRAY_BUFFER,0,glData);
+  layers.forEach((c,lay)=>{
+    gl.uniform1ui(glU.uLay,lay);gl.clear(gl.COLOR_BUFFER_BIT);gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,NC);
+    c.drawImage(glc,0,0,W,H);
+  });
 }
 
 /* ─── the pond ─── */
@@ -255,6 +334,7 @@ function buildWorld(){
   brSegs.forEach(s=>{brBox.x0=Math.min(brBox.x0,s.minx);brBox.y0=Math.min(brBox.y0,s.miny);brBox.x1=Math.max(brBox.x1,s.maxx);brBox.y1=Math.max(brBox.y1,s.maxy);});
   blossoms.forEach(b=>{brBox.x0=Math.min(brBox.x0,b.x-b.r);brBox.y0=Math.min(brBox.y0,b.y-b.r);brBox.x1=Math.max(brBox.x1,b.x+b.r);brBox.y1=Math.max(brBox.y1,b.y+b.r);});
   brBox.x0-=5*S;brBox.y0-=5*S;brBox.x1+=5*S;brBox.y1+=5*S;
+  tileInit();
 
   /* Petals already on the water, drifted a little way from the branch. */
   petals=[];food=[];
@@ -286,6 +366,22 @@ function vAt(px,py){
   let fx=px/sp-0.5,fy=py/sp-0.5;fx=fx<0?0:fx>GW-1.001?GW-1.001:fx;fy=fy<0?0:fy>GH-1.001?GH-1.001:fy;
   const x0=fx|0,y0=fy|0,tx=fx-x0,ty=fy-y0,i=y0*GW+x0;
   return (V[i]*(1-tx)+V[i+1]*tx)*(1-ty)+(V[i+GW]*(1-tx)+V[i+GW+1]*tx)*ty;
+}
+
+/* The ripple height and its slope in x and y at one point. The slopes come from
+   gradient fields worked out once a frame, which match differencing vAt one
+   grid step either side; near the edge, where vAt clamps, it does exactly that. */
+let VV=0,VX=0,VY=0;
+function gradFrame(){
+  for(let y=1;y<GH-1;y++)for(let x=1;x<GW-1;x++){const i=y*GW+x;GX[i]=V[i+1]-V[i-1];GY[i]=V[i+GW]-V[i-GW];}
+}
+function vAt3(px,py){
+  const fx=px/sp-0.5,fy=py/sp-0.5;
+  if(!(fx>=1&&fy>=1&&fx<=GW-2.001&&fy<=GH-2.001)){VV=vAt(px,py);VX=vAt(px+sp,py)-vAt(px-sp,py);VY=vAt(px,py+sp)-vAt(px,py-sp);return;}
+  const x0=fx|0,y0=fy|0,tx=fx-x0,ty=fy-y0,i=y0*GW+x0,j=i+GW,ux=1-tx,uy=1-ty;
+  VV=(V[i]*ux+V[i+1]*tx)*uy+(V[j]*ux+V[j+1]*tx)*ty;
+  VX=(GX[i]*ux+GX[i+1]*tx)*uy+(GX[j]*ux+GX[j+1]*tx)*ty;
+  VY=(GY[i]*ux+GY[i+1]*tx)*uy+(GY[j]*ux+GY[j+1]*tx)*ty;
 }
 
 /* Breeze: patches of wind drift across the pond; inside each the surface is
@@ -334,19 +430,28 @@ function flyerBri(f,px,py,x,y,k){
   return f.shape((dx*c+dy*s)/(S*k),(-dx*s+dy*c)/(S*k),f.flap);
 }
 
-/* Grass and reeds are many thin blades, so they're filed into world-space
-   buckets once and their sway is worked out once per frame. */
-let gBk=new Map(),rBk=new Map(),BS=1;
-const bkey=(x,y)=>(Math.floor(x/BS)+512)*4096+(Math.floor(y/BS)+512);
-function file(map,item,x0,y0,x1,y1,pad){
-  for(let bx=Math.floor((Math.min(x0,x1)-pad)/BS);bx<=Math.floor((Math.max(x0,x1)+pad)/BS);bx++)
-  for(let by=Math.floor((Math.min(y0,y1)-pad)/BS);by<=Math.floor((Math.max(y0,y1)+pad)/BS);by++){
-    const k=(bx+512)*4096+(by+512);let l=map.get(k);if(!l)map.set(k,l=[]);l.push(item);}
+/* Spatial grids: the pond is cut into square tiles and each thing is filed in
+   every tile its bounding box touches, in its usual order, so a cell only tests
+   the few things that could reach it. Tiles clamp at the pond's edge, which
+   keeps lookups for points just outside it correct. */
+function mkGrid(size){const g={s:size,w:Math.ceil(W/size)+1,h:Math.ceil(H/size)+1,c:[]};for(let k=0;k<g.w*g.h;k++)g.c.push([]);return g;}
+function gFile(g,it,x0,y0,x1,y1){
+  let a=Math.floor(x0/g.s),b=Math.floor(x1/g.s),c=Math.floor(y0/g.s),d=Math.floor(y1/g.s);
+  a=a<0?0:a>=g.w?g.w-1:a;b=b<0?0:b>=g.w?g.w-1:b;c=c<0?0:c>=g.h?g.h-1:c;d=d<0?0:d>=g.h?g.h-1:d;
+  for(let y=c;y<=d;y++)for(let x=a;x<=b;x++)g.c[y*g.w+x].push(it);
 }
+function gAt(g,px,py){let x=Math.floor(px/g.s),y=Math.floor(py/g.s);x=x<0?0:x>=g.w?g.w-1:x;y=y<0?0:y>=g.h?g.h-1:y;return g.c[y*g.w+x];}
+const gClear=g=>{for(const l of g.c)l.length=0;};
+const gFileR=(g,it,cx,cy,r)=>gFile(g,it,cx-r,cy-r,cx+r,cy+r);
+
+/* Grass and reeds are many thin blades, filed once (padded for their sway);
+   their sway is worked out once per frame. */
+let gBk,rBk;
 function buildBuckets(){
-  BS=24*S;gBk=new Map();rBk=new Map();
-  banks.forEach(k=>k.blades.forEach(g=>file(gBk,g,g.x,g.y,g.x+Math.cos(g.a)*g.len,g.y+Math.sin(g.a)*g.len,g.len*0.3+sp)));
-  reeds.forEach(c=>c.blades.forEach(b=>{b.c=c;file(rBk,b,c.x,c.y,c.x+Math.cos(b.a)*b.len,c.y+Math.sin(b.a)*b.len,b.len*0.2+sp*2.5);}));
+  const BS=24*S;gBk=mkGrid(BS);rBk=mkGrid(BS);
+  const seg=(g,it,x0,y0,x1,y1,pad)=>gFile(g,it,Math.min(x0,x1)-pad,Math.min(y0,y1)-pad,Math.max(x0,x1)+pad,Math.max(y0,y1)+pad);
+  banks.forEach(k=>k.blades.forEach(g=>seg(gBk,g,g.x,g.y,g.x+Math.cos(g.a)*g.len,g.y+Math.sin(g.a)*g.len,g.len*0.3+sp)));
+  reeds.forEach(c=>c.blades.forEach(b=>{b.c=c;seg(rBk,b,c.x,c.y,c.x+Math.cos(b.a)*b.len,c.y+Math.sin(b.a)*b.len,b.len*0.2+sp*2.5);}));
 }
 function swayFrame(t){
   const gl=BREEZE.str*0.06,rl=BREEZE.str*0.035;
@@ -356,16 +461,43 @@ function swayFrame(t){
     b.mx=c.x+Math.cos(a)*b.len*0.55;b.my=c.y+Math.sin(a)*b.len*0.55;b.ex=c.x+Math.cos(a2)*b.len;b.ey=c.y+Math.sin(a2)*b.len;
     b.ca=Math.cos(a2);b.sa=Math.sin(a2);b.hx=c.x+b.ca*b.len*0.82;b.hy=c.y+b.sa*b.len*0.82;}));
 }
+/* Static things (banks, the branch's blossoms and boughs, which are tested in
+   the branch's own unswayed frame) are filed once; things that move, once a frame.
+   Pebbles get a list per lattice cell of only those that can reach into it. */
+let tPad,tFish,tDuck,tDfly,tBank,tBlos,tSeg,stL;
+function tileInit(){
+  const TS=40*S;
+  tPad=mkGrid(TS);tFish=mkGrid(TS);tDuck=mkGrid(TS);tDfly=mkGrid(TS);tBank=mkGrid(TS);tBlos=mkGrid(TS);tSeg=mkGrid(TS);
+  for(const k of banks)gFileR(tBank,k,k.x,k.y,k.r);
+  for(const b of blossoms)gFileR(tBlos,b,b.x,b.y,b.r);
+  for(const sg of brSegs)gFile(tSeg,sg,sg.minx,sg.miny,sg.maxx,sg.maxy);
+  stL=[];
+  for(let iy=0;iy<stny;iy++)for(let ix=0;ix<stnx;ix++){
+    const l=[],x0=(ix-1)*LS,x1=ix*LS,y0=(iy-1)*LS,y1=iy*LS;
+    for(let oy=-1;oy<=1;oy++){const cy=iy+oy;if(cy<0||cy>=stny)continue;
+      for(let ox=-1;ox<=1;ox++){const cx=ix+ox;if(cx<0||cx>=stnx)continue;
+        const k=cy*stnx+cx,r=str[k];if(!r)continue;
+        if(stx[k]+r<x0||stx[k]-r>x1||sty[k]+r/1.14<y0||sty[k]-r/1.14>y1)continue;
+        l.push(k);}}
+    stL.push(l);}
+}
+function tileFrame(){
+  gClear(tPad);gClear(tFish);gClear(tDuck);gClear(tDfly);
+  for(const p of pads)gFileR(tPad,p,p.x,p.y,p.r);
+  for(const f of fish)gFileR(tFish,f,f.x,f.y,L*f.sz*0.9);
+  for(const dk of ducks){gFileR(tDuck,dk,dk.x,dk.y,DL*dk.sz);for(const c of dk.kids)gFileR(tDuck,c,c.x,c.y,DL*c.sz);}
+  for(const f of dflies)gFileR(tDfly,f,f.x,f.y,12*S);
+}
 function grassBri(px,py,i){
-  const l=gBk.get(bkey(px,py));
-  if(l){const bw=sp*0.7;let best=-1;
+  const l=gAt(gBk,px,py);
+  if(l.length){const bw=sp*0.7;let best=-1;
     for(const g of l){const gd=segd(px,py,g.x,g.y,g.ex,g.ey);if(gd<bw*(1-SU*0.55)){const v=g.b*(1-SU*0.25);if(v>best)best=v;}}
     if(best>=0){gHit=1;return best;}}
-  for(const k of banks){const d=Math.hypot(px-k.x,py-k.y);if(d<k.r){gHit=2;if(d>k.r-sp*1.1)return 0.3+tex[i]*0.08;return 0.17+tex[i]*0.1;}}
+  for(const k of gAt(tBank,px,py)){const d=Math.hypot(px-k.x,py-k.y);if(d<k.r){gHit=2;if(d>k.r-sp*1.1)return 0.3+tex[i]*0.08;return 0.17+tex[i]*0.1;}}
   return -1;
 }
 function reedBri(px,py){
-  const l=rBk.get(bkey(px,py));if(!l)return -1;
+  const l=gAt(rBk,px,py);if(!l.length)return -1;
   const bw=sp*0.7,hw=sp*0.9,hl=sp*1.9;let best=-1;
   for(const b of l){const c=b.c;
     if(b.cat&&segd(px,py,b.hx-b.ca*hl,b.hy-b.sa*hl,b.hx+b.ca*hl,b.hy+b.sa*hl)<hw)return 1;
@@ -378,7 +510,7 @@ function reedBri(px,py){
 function duckOne(px,py,dk){
   const k=S*dk.sz,dl=DL*dk.sz,dw=DW*dk.sz,dx=px-dk.x,dy=py-dk.y;if(Math.abs(dx)>dl||Math.abs(dy)>dl)return -1;
   const c=Math.cos(dk.a),s=Math.sin(dk.a),u=dx*c+dy*s,v=-dx*s+dy*c,hu=u-dl*0.42;
-  if(hu*hu+v*v<(7*k)**2){dCat=INK.white;if(Math.hypot(hu-2*k,Math.abs(v)-3.6*k)<1.7*k)return 0.12;return 1;}
+  if(hu*hu+v*v<(7*k)**2){dCat=INK.white;return 1;}
   if(((u-dl*0.62)/(4.5*k))**2+(v/(2.6*k))**2<1){dCat=INK.apricot;return 0.9;}
   const e=(u/(dl*0.5))**2+(v/(dw*0.5))**2;dCat=INK.white;
   if(e<1){if(e>0.72)return 0.62;if(Math.abs(v)<dw*0.1&&u<dl*0.15)return 0.7;return 0.92;}
@@ -386,13 +518,13 @@ function duckOne(px,py,dk){
   return -1;
 }
 function duckAt(px,py){
-  for(const dk of ducks){let b=duckOne(px,py,dk);if(b>=0)return b;for(const c of dk.kids){b=duckOne(px,py,c);if(b>=0)return b;}}
+  for(const dk of gAt(tDuck,px,py)){const b=duckOne(px,py,dk);if(b>=0)return b;}
   return -1;
 }
 /* A koi from above: a tapering body that bends in a travelling wave, a forked
    translucent tail with fin rays, two pectoral fins, and its markings. */
 function koiAt(px,py){
-  for(const f of fish){
+  for(const f of gAt(tFish,px,py)){
     const k=S*f.sz,Lk=L*f.sz,dx=px-f.x,dy=py-f.y;if(Math.abs(dx)>Lk*0.9||Math.abs(dy)>Lk*0.9)continue;
     const u=dx*f.cs+dy*f.sn;let v=-dx*f.sn+dy*f.cs;
     const q=u/Lk+0.5;if(q<-0.36||q>1.02)continue;
@@ -403,7 +535,6 @@ function koiAt(px,py){
       const hw=Wk*(q<0.72?0.3+0.7*Math.sin(q/0.72*1.5708):Math.sqrt(Math.max(0,1-((q-0.72)/0.28)**2)));
       const av=Math.abs(v);
       if(av<hw){
-        if(q>0.84&&q<0.92&&Math.abs(av-hw*0.62)<1.5*k){kCat=f.base;return 0.18;}
         const n=vnoise(u/(10*k)+f.seed*7.1,v/(7*k)+f.seed*3.3);
         kCat=n>f.thr?f.mark:f.base;
         if(av>hw*0.78)return 0.72;
@@ -422,7 +553,7 @@ function koiAt(px,py){
   return -1;
 }
 function padBri(px,py){
-  for(const p of pads){
+  for(const p of gAt(tPad,px,py)){
     const dx=px-p.x,dy=py-p.y;if(Math.abs(dx)>p.r||Math.abs(dy)>p.r)continue;
     const d=Math.hypot(dx,dy)/p.r;if(d>1)continue;
     const ang=Math.atan2(dy,dx),df=Math.atan2(Math.sin(ang-p.n),Math.cos(ang-p.n));
@@ -432,9 +563,13 @@ function padBri(px,py){
   }
   return -1;
 }
-function padOver(px,py){for(const p of pads){const dx=px-p.x,dy=py-p.y;if(dx*dx+dy*dy<p.r*p.r)return true;}return false;}
+function padOver(px,py){for(const p of gAt(tPad,px,py)){const dx=px-p.x,dy=py-p.y;if(dx*dx+dy*dy<p.r*p.r)return true;}return false;}
 function stoneAt(px,py){
   const ix=Math.floor(px/LS)+1,iy=Math.floor(py/LS)+1;
+  if(ix>=0&&iy>=0&&ix<stnx&&iy<stny){
+    for(const k of stL[iy*stnx+ix]){const r=str[k],ex=px-stx[k],ey=(py-sty[k])*1.14,d2=ex*ex+ey*ey;
+      if(d2<r*r)return stb[k]*(0.7+0.3*(1-d2/(r*r)))*(1-(ex+ey)/r*0.14);}
+    return -1;}
   for(let oy=-1;oy<=1;oy++){const cy=iy+oy;if(cy<0||cy>=stny)continue;
     for(let ox=-1;ox<=1;ox++){const cx=ix+ox;if(cx<0||cx>=stnx)continue;
       const k=cy*stnx+cx,r=str[k];if(!r)continue;
@@ -447,16 +582,16 @@ function branchAt(px,py){
   const dr=Math.hypot(px-brRoot.x,py-brRoot.y)/brReach,t=BREEZE.t;
   const sw=(Math.sin(t*0.5)*0.6+Math.sin(t*0.83+1)*0.4)*3*S*dr*dr*BREEZE.str;
   const qx=px+brDir.y*sw,qy=py-brDir.x*sw;
-  for(const b of blossoms){const dx=qx-b.x,dy=qy-b.y;if(Math.abs(dx)>b.r||Math.abs(dy)>b.r)continue;
+  for(const b of gAt(tBlos,qx,qy)){const dx=qx-b.x,dy=qy-b.y;if(Math.abs(dx)>b.r||Math.abs(dy)>b.r)continue;
     const d=Math.hypot(dx,dy),rr=b.r*(0.74+0.26*Math.cos(5*Math.atan2(dy,dx)+b.rot));
     if(d<rr){if(d<b.r*0.24){bCat=INK.apricot;return 0.9;}bCat=INK.pink;return d>rr*0.78?0.78:0.98;}}
-  for(const s of brSegs){if(qx<s.minx||qx>s.maxx||qy<s.miny||qy>s.maxy)continue;
+  for(const s of gAt(tSeg,qx,qy)){if(qx<s.minx||qx>s.maxx||qy<s.miny||qy>s.maxy)continue;
     const d=segd(qx,qy,s.x0,s.y0,s.x1,s.y1),w=s.w0+(s.w1-s.w0)*SU;
     if(d<w){bCat=INK.bark;return d>w*0.55?0.5:0.7;}}
   return -1;
 }
 function dflyAt(px,py){
-  for(const f of dflies){const dx=px-f.x,dy=py-f.y;if(Math.abs(dx)>12*S||Math.abs(dy)>12*S)continue;
+  for(const f of gAt(tDfly,px,py)){const dx=px-f.x,dy=py-f.y;if(Math.abs(dx)>12*S||Math.abs(dy)>12*S)continue;
     const c=Math.cos(f.a),s=Math.sin(f.a),u=dx*c+dy*s,v=-dx*s+dy*c,av=Math.abs(v);
     if((u-5*S)**2+v*v<(2*S)**2)return 1;
     if(av<1.1*S&&u>-10*S&&u<5*S)return 0.95;
@@ -620,8 +755,10 @@ function update(t,dt){
 const toWorld=(sx,sy)=>({x:cam.cx+(sx-W/2)/cam.z,y:cam.cy+(sy-H/2)/cam.z});
 function clampCam(){const hw=W/(2*cam.z),hh=H/(2*cam.z);cam.cx=Math.min(Math.max(cam.cx,hw),W-hw);cam.cy=Math.min(Math.max(cam.cy,hh),H-hh);}
 function zoomAt(sx,sy,nz){const w=toWorld(sx,sy);cam.anchor={sx,sy,wx:w.x,wy:w.y};cam.tz=Math.min(ZMAX,Math.max(ZMIN,nz));}
+/* Movement is measured against the camera as the last frame drew it, because
+   dragging and pinching move it in pointer events between frames; while it
+   moves, the grid snaps instead of fading, so nothing leaves a trail. */
 function camFrame(){
-  cam.pz=cam.z;cam.pcx=cam.cx;cam.pcy=cam.cy;
   if(Math.abs(cam.tz-cam.z)>1e-4)cam.z+=(cam.tz-cam.z)*0.2;else cam.z=cam.tz;
   if(cam.anchor){cam.cx=cam.anchor.wx-(cam.anchor.sx-W/2)/cam.z;cam.cy=cam.anchor.wy-(cam.anchor.sy-H/2)/cam.z;if(cam.z===cam.tz)cam.anchor=null;}
   clampCam();
@@ -629,6 +766,7 @@ function camFrame(){
   const tx=tiltX*7*S+(cam.cx-W/2)*0.035,ty=tiltY*7*S+(cam.cy-H/2)*0.035,ox=Px,oy=Py;
   Px+=(tx-Px)*0.06;Py+=(ty-Py)*0.06;
   cam.moving=Math.abs(cam.z-cam.pz)>1e-4||Math.abs(cam.cx-cam.pcx)>0.01||Math.abs(cam.cy-cam.pcy)>0.01||Math.hypot(Px-ox,Py-oy)>0.6;
+  cam.pz=cam.z;cam.pcx=cam.cx;cam.pcy=cam.cy;
 }
 
 /* ─── input ─── */
@@ -691,23 +829,28 @@ window.addEventListener('keydown',e=>{
 
 /* ─── render ─── */
 function render(t){
-  breezeFrame(t);swayFrame(t);fileSmall();
+  breezeFrame(t);swayFrame(t);fileSmall();tileFrame();gradFrame();
   const act=flyers.filter(f=>f.active),shs=act.map(f=>({f,p:shadowPos(f)}));
   const rate=cam.moving?1:0,z=cam.z,cw=CELL/z;
   const dfly=smooth(0.5,0.9,wv[0]+wv[3]),RF=13*S,RFmax=9*S;
   const shx=13*S,shy=17*S;
+  /* Anything that depends only on where a cell sits in the world is kept until the camera moves. */
+  const ck=z+','+cam.cx+','+cam.cy,fresh=ck!==camKey;
+  if(fresh){camKey=ck;NZ.fill(NaN);}
+  /* The slow shimmer, sin(t/2 - (wx*.006 + wy*.004)), split into a column part and a row part. */
+  for(let x=0;x<CW;x++){const wx=cam.cx+((x+0.5)*CELL-W/2)/z,a=t*0.5-wx*0.006;colW[x]=wx;colS[x]=Math.sin(a);colC[x]=Math.cos(a);}
   /* 1. sample the pond, top layer first, into each cell's brightness, ink and depth */
   for(let y=0;y<CH;y++){
-    const wy=cam.cy+((y+0.5)*CELL-H/2)/z;
+    const wy=cam.cy+((y+0.5)*CELL-H/2)/z,rs=Math.sin(wy*0.004),rc=Math.cos(wy*0.004);
     for(let x=0;x<CW;x++){
-      const i=y*CW+x,wx=cam.cx+((x+0.5)*CELL-W/2)/z;
-      const tx=hash(Math.floor(wx/cw),Math.floor(wy/cw));tex[i]=tx;
+      const i=y*CW+x,wx=colW[x];
+      let tx;if(fresh){tx=hash(Math.floor(wx/cw),Math.floor(wy/cw));tex[i]=tx;}else tx=tex[i];
       let b=-1,lay=2,cat=0,air=true;
       for(const f of act){b=flyerBri(f,wx-Px*1.6,wy-Py*1.6,f.x,f.y,f.k);if(b>=0){cat=f.ink;break;}}
       if(b<0){b=branchAt(wx-Px*0.7,wy-Py*0.7);if(b>=0)cat=bCat;}
       if(b<0){b=smallAt(wx,wy,true);if(b>=0)cat=sCat;}
       if(b<0&&dfly>0.05){b=dflyAt(wx-Px*0.5,wy-Py*0.5);if(b>=0){cat=INK.aqua;b*=dfly;}}
-      if(b<0){b=reedBri(wx-Px*0.25,wy-Py*0.25);if(b>=0)cat=b===1?INK.apricot:INK.sage;}
+      if(b<0){b=reedBri(wx-Px*0.25,wy-Py*0.25);if(b>=0)cat=b===1?INK.bark:INK.sage;}
       if(b<0){
         air=false;gHit=0;
         b=grassBri(wx,wy,i);if(b>=0)cat=gHit===1?INK.sage:INK.bank;
@@ -716,14 +859,14 @@ function render(t){
         if(b<0){b=padBri(wx,wy);if(b>=0){cat=INK.mint;b+=tx*0.06+vAt(wx,wy)*0.07;}}
         if(b<0){
           /* the water column: ripples on top, koi under them, pebbles under those */
-          const v=vAt(wx,wy);
-          let sx=vAt(wx+sp,wy)-vAt(wx-sp,wy),sy=vAt(wx,wy+sp)-vAt(wx,wy-sp);
+          vAt3(wx,wy);
+          const v=VV;let sx=VX,sy=VY;
           const slope=sx+sy;
           sx*=RF;sy*=RF;sx=sx>RFmax?RFmax:sx<-RFmax?-RFmax:sx;sy=sy>RFmax?RFmax:sy<-RFmax?-RFmax:sy;
           b=koiAt(wx+Px*0.5+sx,wy+Py*0.5+sy);
           if(b>=0){cat=kCat;lay=1;b=b*0.92+tx*0.03+v*0.05-slope*0.04;}
           else{
-            const n=vnoise(wx/(sp*2.2),wy/(sp*2.2));
+            let n=NZ[i];if(n!==n){n=vnoise(wx/(sp*2.2),wy/(sp*2.2));NZ[i]=n;}
             const bw=0.02+breezeAt(wx,wy)*1.1+n*n*n*0.1*(0.5+tx*0.9)+(v>0?v*0.3:0)+v*0.04-slope*0.12;
             const fx=wx+Px+sx*1.7,fy=wy+Py+sy*1.7;
             let bs=stoneAt(fx,fy);
@@ -734,27 +877,29 @@ function render(t){
         for(const s of shs){if(flyerBri(s.f,wx,wy,s.p.x,s.p.y,1)>=0){b*=0.4;break;}}
         if(branchAt(wx-shx,wy-shy)>=0)b*=0.62;
       }
-      b*=1+0.06*Math.sin(t*0.5-(wx*0.006+wy*0.004));
+      b*=1+0.06*(colS[x]*rc-colC[x]*rs);
       b=contrast(b<0?0:b>1?1:b);
       const d=D[i];D[i]=d+(b-d)*(rate||(b>d?RISE:FALL));LAY[i]=lay;CAT[i]=cat;
     }
   }
   /* 2. pick each cell's glyph and draw it on its layer */
   dctx.clearRect(0,0,W,H);uctx.clearRect(0,0,W,H);sctx.clearRect(0,0,W,H);
-  const hs=SW/2,layers=[dctx,uctx,sctx],gainA=[0.8,1,1.08];
+  const hs=SW/2,layers=[dctx,uctx,sctx],gainA=[0.8,1,1.08],G8=gl?glData:null;
   for(let y=0;y<CH;y++)for(let x=0;x<CW;x++){
-    const i=y*CW+x,b=D[i];if(b<0.04)continue;
-    const lay=LAY[i],g=layers[lay];
-    let ch;
+    const i=y*CW+x,b=D[i];if(b<0.04){if(G8)G8[i*4+2]=0;continue;}
+    const lay=LAY[i];
+    let gi=-1;
     if(lay>0&&b>0.24&&x>0&&y>0&&x<CW-1&&y<CH-1){
       const ddx=D[i+1]-D[i-1],ddy=D[i+CW]-D[i-CW];
-      if(ddx*ddx+ddy*ddy>0.09&&LAY[i-1]===LAY[i+1]){let a=Math.atan2(ddy,ddx)+Math.PI/2;a=((a%Math.PI)+Math.PI)%Math.PI;ch=EDGE[Math.round(a/(Math.PI/4))%4];}
+      if(ddx*ddx+ddy*ddy>0.09&&LAY[i-1]===LAY[i+1]){let a=Math.atan2(ddy,ddx)+Math.PI/2;a=((a%Math.PI)+Math.PI)%Math.PI;gi=EDGE_I[Math.round(a/(Math.PI/4))%4];}
     }
-    if(lay===0)ch='#';
-    else if(!ch){const lv=Math.min(7,Math.floor(Math.pow(b,0.85)*8));ch=lv>=5&&tex[i]>0.55?HOT[Math.floor(tex[i]*97)%8]:FILL[lv];}
-    g.globalAlpha=Math.min(1,Math.pow(b,0.78)*gainA[lay]);
-    g.drawImage(sprites[CAT[i]][ch],(x+0.5)*CELL-hs,(y+0.5)*CELL-hs,SW,SW);
+    if(lay===0)gi=HASH_I;
+    else if(gi<0){const lv=Math.min(7,Math.floor(Math.pow(b,0.85)*8));gi=lv>=5&&tex[i]>0.55?HOT_I[Math.floor(tex[i]*97)%8]:FILL_I[lv];}
+    const al=Math.min(1,Math.pow(b,0.78)*gainA[lay]);
+    if(G8){const o=i*4;G8[o]=gi;G8[o+1]=CAT[i];G8[o+2]=Math.round(al*255);G8[o+3]=lay;}
+    else{const g=layers[lay];g.globalAlpha=al;g.drawImage(sprites[CAT[i]][GLYPHS[gi]],(x+0.5)*CELL-hs,(y+0.5)*CELL-hs,SW,SW);}
   }
+  if(G8)glDraw(layers);
   /* fireflies and rain are single characters, stamped straight onto the grid */
   const ffly=smooth(0.3,0.8,wv[2]+wv[1]*0.4),halos=[];
   if(ffly>0.02)for(const f of fflies){
@@ -839,7 +984,7 @@ function loop(now){
 }
 let rt=null;
 window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(init,200);});
-function start(){init();if(location.hash==='#fixed')window.__pond={koi:()=>fish.map(f=>[f.x,f.y]),ducks:()=>ducks.map(d=>[d.x,d.y]),tod:m=>{todMode=m;},cam};requestAnimationFrame(loop);}
+function start(){glSetup();init();if(location.hash==='#fixed')window.__pond={koi:()=>fish.map(f=>[f.x,f.y]),ducks:()=>ducks.map(d=>[d.x,d.y]),tod:m=>{todMode=m;},cam};requestAnimationFrame(loop);}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(start);else start();
 })();
 </script>

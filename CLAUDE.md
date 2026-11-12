@@ -28,6 +28,15 @@ Every file is self-contained HTML/CSS/JS, so there is no build step. Open a file
   - FILL ramp `. · : - + o 0 #`, plus HOT variants for the brightest areas.
   - EDGE strokes `- \ | /`, chosen from the brightness gradient.
   - The buffer is smoothed with RISE 0.22 and FALL 0.1.
+- **Glyph stamping:** WebGL2 draws every layer's glyphs in one instanced call from a white glyph atlas,
+  tinted per ink in the shader (`glSetup`/`glGrid`/`glDraw`), then copies onto the 2D layer canvases.
+  If WebGL2 is missing or the context is lost, it falls back to per-cell `drawImage` from the baked sprites.
+- **Sampling speed:** pads, koi, ducks, dragonflies, banks, blossoms, boughs, grass and reeds are filed into
+  dense world grids (`mkGrid`/`gFile`/`gAt`), so each cell tests only nearby things.
+  - Pebbles use a per-lattice-cell candidate list.
+  - Per-cell texture and noise are cached until the camera moves.
+  - Ripple slopes come from per-frame gradient fields (`vAt3`).
+  - Keep new scene objects on this pattern: never loop over every object per cell.
 - **Layers:**
   - deep (blurred floor), under and surf;
   - glow from an h2/h4/h8 downsample chain, composited with `lighter`;
