@@ -7,7 +7,7 @@ Every file is self-contained HTML/CSS/JS, so there is no build step. Open a file
 - `index.html`: the main pond. It is published as the private claude.ai artifact "Koi Pond"
   (slug `0096f870-cb29-4280-9550-8df3ef4a5474`, https://claude.ai/artifact/15DyUswYRbT8gYQVE8cE1R).
 - `scripts/screenshot.js`: Playwright render check. Run `node scripts/screenshot.js index.html shot.png`.
-  It loads the file with `#fixed`, which turns off adaptive coarsening and exposes `window.__pond`.
+  It loads the file with `#fixed`, which exposes `window.__pond`. It needs Node and Playwright.
 
 ## Design rules (from Leif and not negotiable)
 - Motion stays calm and never overstimulating: smooth fades and slow ripples, with good contrast.
@@ -22,12 +22,16 @@ Every file is self-contained HTML/CSS/JS, so there is no build step. Open a file
 ## Architecture (index.html)
 - **Rendering:** a world-space canvas 2D scene is sampled by a screen-space character grid through a camera
   (zoom 1–6×, pan, pinch, wheel, keys and buttons). Zooming adds characters instead of enlarging glyphs.
-- **Grid size:** `setGrid(Math.max(5, Math.min(7, W/235)))` gives about 6px cells at 1440px wide.
-- **Adaptive fallback:** if frames run slow, it calls `setGrid(CELL+1.5)` up to a limit of 11.5.
+- **Grid size:** `setGrid(Math.max(4, Math.min(6, W/300)))` gives about 4.8px cells at 1440px wide.
+  The grid is fixed. There is deliberately no adaptive coarsening, so keep new work within the frame budget.
+- **Checkerboard sampling:** while the camera is still, each frame re-samples half the cells in an alternating
+  checkerboard, using the per-2-frame rates `RISE2`/`FALL2`. Any frame where the camera moves samples every cell.
 - **Brightness to glyph:**
   - FILL ramp `. · : - + o 0 #`, plus HOT variants for the brightest areas.
   - EDGE strokes `- \ | /`, chosen from the brightness gradient.
   - The buffer is smoothed with RISE 0.22 and FALL 0.1.
+- **Glow:** `glowChain(src, sq)` squares brightness (self-multiply on black) from level h<sq> down, so only
+  bright light blooms. surf uses level 2 and under uses level 4. The deep layer's blur is unsquared.
 - **Glyph stamping:** WebGL2 draws every layer's glyphs in one instanced call from a white glyph atlas,
   tinted per ink in the shader (`glSetup`/`glGrid`/`glDraw`), then copies onto the 2D layer canvases.
   If WebGL2 is missing or the context is lost, it falls back to per-cell `drawImage` from the baked sprites.
